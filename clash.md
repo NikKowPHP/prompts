@@ -1,5 +1,5 @@
 # ==========================================
-# CLASH VERGE TUN MODE CONFIGURATION
+# CLASH VERGE TUN MODE CONFIGURATION (FIXED)
 # ==========================================
 port: 7890
 socks-port: 7891
@@ -10,52 +10,57 @@ log-level: info
 ipv6: false
 
 # --- 1. TUN CONFIGURATION ---
-# This section completely replaces 'tun2socks' and your 'ip route' commands.
 tun:
   enable: true
-  stack: system              # 'system' is stable on Linux; use 'gvisor' if you get errors.
+  stack: gvisor 
   dns-hijack:
-    - any:53                 # Intercepts standard DNS requests
-  auto-route: true           # Replaces 'ip route add default...'
-  auto-detect-interface: true # Replaces manually specifying 'enp2s0'
+    - any:53
+  auto-route: true
+  auto-detect-interface: true
 
-# --- 2. DNS CONFIGURATION ---
-# This replaces your 'systemd-resolved' and 'dig' logic.
+# --- 2. SNIFFER ---
+sniffer:
+  enable: true
+  parse-pure-ip: true
+  sniff:
+    tls:
+      ports: [443, 5432, 6543] 
+    http:
+      ports: [80, 8080-8888]
+
+# --- 3. DNS CONFIGURATION ---
 dns:
   enable: true
   listen: :1053
   ipv6: false
-  enhanced-mode: fake-ip     # Returns instant fake IPs to apps; resolves remotely.
+  enhanced-mode: fake-ip
   fake-ip-range: 198.19.0.1/16
   
-  # These are the bootstrap servers used ONLY to resolve the secure DNS servers below.
+  # Standard DNS might be blocked in your office. 
+  # If 1.1.1.1 fails, Clash will try to route domains via the Proxy anyway.
   default-nameserver:
     - 1.1.1.1
     - 8.8.8.8
   
-  # The actual Secure DNS (DoT) you wanted.
   nameserver:
-    - tls://1.1.1.1
-    - tls://8.8.8.8
-    # Fallback
     - https://1.1.1.1/dns-query
+    - tls://8.8.8.8
 
-  # Fake-IP Filter: Forces real IP resolution for specific domains 
-  # (Useful if Supabase/Postgres tools have issues with Fake-IPs, though usually not needed).
   fake-ip-filter:
     - "*.lan"
     - "*.local"
-    - "+.supabase.com"  # <--- ADDED: Covers pooler.supabase.com and api.supabase.com
-    - "+.supabase.co"   # <--- ADDED: Just in case
+    # DISABLED SUPABASE FILTER TEMPORARILY
+    # If 1.1.1.1 is blocked by your company, keeping this enabled breaks the connection.
+    # Letting it use Fake-IP allows the Proxy to handle the DNS resolution for us.
+    # - "+.supabase.com"
+    # - "+.supabase.co"
 
-# --- 3. PROXY SERVER ---
+# --- 4. PROXY SERVER ---
 proxies:
   - name: "Corporate-Proxy"
     type: http
     server: 172.16.2.254
     port: 3128
-    # username: "user" 
-    # password: "pass" 
 
 proxy-groups:
   - name: "Proxy-Selector"
@@ -64,26 +69,24 @@ proxy-groups:
       - "Corporate-Proxy"
       - DIRECT
 
-# --- 4. ROUTING RULES ---
-# Clash processes rules from top to bottom. First match wins.
+# --- 5. ROUTING RULES ---
 rules:
-  # === 1. DNS Servers ===
-  # We must route the encrypted DNS traffic directly to avoid loops
+  # 1. DNS & Local (Keep Direct)
   - IP-CIDR,1.1.1.1/32,DIRECT
   - IP-CIDR,8.8.8.8/32,DIRECT
-
-  # === 2. The Proxy Server Itself ===
-  # Prevents infinite routing loops (Critical)
   - IP-CIDR,172.16.2.254/32,DIRECT
 
-  # === 3. Database Exemptions ===
-  # Replaces your manual 'dig' and route addition.
-  # Clash will detect the domain and route traffic out the physical interface.
-  - DOMAIN-SUFFIX,pooler.supabase.com,DIRECT
+  # 2. Database Ports -> MUST GO THROUGH PROXY
+  # If we send these Direct, the firewall kills them (ERR_CONNECTION_CLOSED)
+  - DST-PORT,5432,Proxy-Selector
+  - DST-PORT,6543,Proxy-Selector
 
-  # === 4. Local Network & Geo Exemptions ===
+  # 3. Supabase Domains -> MUST GO THROUGH PROXY
+  - DOMAIN-SUFFIX,pooler.supabase.com,Proxy-Selector
+  - DOMAIN-SUFFIX,supabase.com,Proxy-Selector
+  - DOMAIN-SUFFIX,supabase.co,Proxy-Selector
+
+  # 4. General
   - GEOIP,PRIVATE,DIRECT
   - GEOIP,CN,DIRECT
-
-  # === 5. Default Route (The Tunnel) ===
   - MATCH,Proxy-Selector
