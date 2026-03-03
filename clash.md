@@ -74,6 +74,12 @@ proxy-groups:
 
 # --- 5. ROUTING RULES ---
 rules:
+  # Add these at the TOP of your rules section
+  - DOMAIN-SUFFIX,pooler.supabase.com,Proxy-Selector
+  - DOMAIN-SUFFIX,supabase.co,Proxy-Selector
+  
+  # Force all 443 traffic to Supabase through the proxy
+  - DOMAIN,aws-0-us-west-1.pooler.supabase.com,Proxy-Selector
   # 1. Local / Bypass
   - IP-CIDR,127.0.0.0/8,DIRECT
   - IP-CIDR,172.16.0.0/12,DIRECT
