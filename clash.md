@@ -37,7 +37,7 @@ dns:
   listen: :1053
   ipv6: false
   enhanced-mode: fake-ip
-  fake-ip-range: 198.19.0.1/16
+  fake-ip-range: 198.10.0.1/16
   
   default-nameserver:
     - 1.1.1.1
@@ -50,13 +50,15 @@ dns:
   fake-ip-filter:
     - "*.lan"
     - "*.local"
-    # SUPABASE FIX: Prevent Prisma from getting a 198.19.x.x address
     - "*.supabase.co"
     - "*.supabase.com"
     - "*.pooler.supabase.com"
     - "*.ngrok.com"
     - "*.ngrok.io"
     - "crl.ngrok-agent.com"
+    # Add these two lines:
+    - "*.debian.org"
+    - "*.debian.net"
 
 # --- 4. PROXY SERVER ---
 proxies:
